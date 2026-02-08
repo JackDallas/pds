@@ -1,0 +1,18 @@
+[package]
+name = "dallaspds-multi"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "dallaspds-multi"
+path = "src/main.rs"
+
+[dependencies]
+dallaspds-core = { workspace = true }
+dallaspds-server = { workspace = true }
+dallaspds-storage-postgres = { workspace = true }
+dallaspds-blob-s3 = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

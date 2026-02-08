@@ -1,0 +1,16 @@
+[package]
+name = "dallaspds-storage-sqlite"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dallaspds-core = { workspace = true }
+sqlx = { workspace = true, features = ["sqlite"] }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

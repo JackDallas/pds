@@ -1,0 +1,16 @@
+hostname = "localhost"
+port = 3000
+public_url = "http://localhost:3000"
+plc_url = "https://plc.directory"
+available_user_domains = [".test"]
+invite_required = false
+
+[jwt]
+access_secret = "dev-access-secret-change-me"
+refresh_secret = "dev-refresh-secret-change-me"
+
+[database]
+url = "sqlite://data/pds.db?mode=rwc"
+
+[blobs]
+path = "data/blobs"

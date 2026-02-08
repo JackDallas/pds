@@ -1,0 +1,17 @@
+hostname = "localhost"
+port = 3000
+public_url = "http://localhost:3000"
+plc_url = "https://plc.directory"
+available_user_domains = [".example.com"]
+invite_required = true
+
+[jwt]
+access_secret = "change-me"
+refresh_secret = "change-me"
+
+[database]
+url = "postgres://localhost/dallaspds"
+
+[blobs]
+bucket = "dallaspds-blobs"
+region = "us-east-1"

@@ -1,0 +1,14 @@
+[package]
+name = "dallaspds-identity"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dallaspds-core = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+hickory-resolver = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

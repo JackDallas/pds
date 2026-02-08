@@ -1,0 +1,37 @@
+[package]
+name = "dallaspds-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dallaspds-core = { workspace = true }
+dallaspds-crypto = { workspace = true }
+dallaspds-identity = { workspace = true }
+dallaspds-repo = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+ipld-core = { workspace = true }
+serde_ipld_dagcbor = { workspace = true }
+sha2 = { workspace = true }
+bytes = { workspace = true }
+serde_bytes = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+dallaspds-test-utils = { workspace = true }
+tempfile = { workspace = true }
+http-body-util = { workspace = true }
+tower = { workspace = true }
+jsonwebtoken = { workspace = true }

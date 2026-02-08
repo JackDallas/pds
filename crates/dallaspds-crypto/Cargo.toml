@@ -1,0 +1,20 @@
+[package]
+name = "dallaspds-crypto"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dallaspds-core = { workspace = true }
+atrium-crypto = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_ipld_dagcbor = { workspace = true }
+ipld-core = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+jsonwebtoken = { workspace = true }
+base32 = { workspace = true }
+hex = { workspace = true }

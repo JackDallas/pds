@@ -1,0 +1,102 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dallaspds-core",
+    "crates/dallaspds-crypto",
+    "crates/dallaspds-repo",
+    "crates/dallaspds-storage-sqlite",
+    "crates/dallaspds-storage-postgres",
+    "crates/dallaspds-blob-fs",
+    "crates/dallaspds-blob-s3",
+    "crates/dallaspds-identity",
+    "crates/dallaspds-server",
+    "crates/dallaspds-single",
+    "crates/dallaspds-multi",
+    "crates/dallaspds-test-utils",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Internal crates
+dallaspds-core = { path = "crates/dallaspds-core" }
+dallaspds-crypto = { path = "crates/dallaspds-crypto" }
+dallaspds-repo = { path = "crates/dallaspds-repo" }
+dallaspds-storage-sqlite = { path = "crates/dallaspds-storage-sqlite" }
+dallaspds-storage-postgres = { path = "crates/dallaspds-storage-postgres" }
+dallaspds-blob-fs = { path = "crates/dallaspds-blob-fs" }
+dallaspds-blob-s3 = { path = "crates/dallaspds-blob-s3" }
+dallaspds-identity = { path = "crates/dallaspds-identity" }
+dallaspds-server = { path = "crates/dallaspds-server" }
+dallaspds-single = { path = "crates/dallaspds-single" }
+dallaspds-multi = { path = "crates/dallaspds-multi" }
+dallaspds-test-utils = { path = "crates/dallaspds-test-utils" }
+
+# AT Protocol
+atrium-api = { version = "0.25", default-features = false }
+atrium-common = "0.1"
+atrium-crypto = "0.1"
+atrium-repo = "0.1"
+atrium-xrpc = "0.12"
+
+# IPLD / DAG-CBOR
+ipld-core = { version = "0.4", features = ["serde"] }
+serde_ipld_dagcbor = "0.6"
+
+# Web framework
+axum = { version = "0.8", features = ["macros", "ws"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "migrate", "chrono", "json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_bytes = "0.11"
+
+# Configuration
+figment = { version = "0.10", features = ["toml", "env"] }
+
+# Cryptography & auth
+argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
+jsonwebtoken = "9"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
+async-trait = "0.1"
+bytes = "1"
+base32 = "0.5"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+rsky-syntax = "0.1"
+tokio-tungstenite = "0.26"
+hickory-resolver = "0.25"
+
+# TLS / ACME
+rustls-acme = { version = "0.15", features = ["axum"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+
+# Testing
+tempfile = "3"
+http-body-util = "0.1"

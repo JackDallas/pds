@@ -1,0 +1,22 @@
+hostname = "pds.example.com"
+port = 443
+public_url = "https://pds.example.com"
+plc_url = "https://plc.directory"
+available_user_domains = [".example.com"]
+invite_required = false
+
+[tls]
+domains = ["pds.example.com"]
+contact_email = "admin@example.com"
+# cert_cache = "data/certs"   # default
+# production = false           # default: staging, set true for real certs
+
+[jwt]
+access_secret = "CHANGE-ME"
+refresh_secret = "CHANGE-ME"
+
+[database]
+url = "sqlite://data/pds.db?mode=rwc"
+
+[blobs]
+path = "data/blobs"

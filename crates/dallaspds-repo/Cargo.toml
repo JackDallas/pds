@@ -1,0 +1,21 @@
+[package]
+name = "dallaspds-repo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dallaspds-core = { workspace = true }
+dallaspds-crypto = { workspace = true }
+atrium-api = { workspace = true }
+atrium-repo = { workspace = true }
+ipld-core = { workspace = true }
+serde_ipld_dagcbor = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde_bytes = { workspace = true }
+sha2 = { workspace = true }
+futures = { workspace = true }

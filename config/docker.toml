@@ -1,0 +1,16 @@
+hostname = "localhost"
+port = 3000
+public_url = "http://localhost:3000"
+plc_url = "https://plc.directory"
+available_user_domains = [".localhost"]
+invite_required = false
+
+[jwt]
+access_secret = "CHANGE-ME-IN-COOLIFY"
+refresh_secret = "CHANGE-ME-IN-COOLIFY"
+
+[database]
+url = "sqlite:///app/data/pds.db?mode=rwc"
+
+[blobs]
+path = "/app/data/blobs"

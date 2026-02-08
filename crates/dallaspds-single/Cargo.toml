@@ -1,0 +1,22 @@
+[package]
+name = "dallaspds-single"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "dallaspds-single"
+path = "src/main.rs"
+
+[dependencies]
+dallaspds-core = { workspace = true }
+dallaspds-server = { workspace = true }
+dallaspds-storage-sqlite = { workspace = true }
+dallaspds-blob-fs = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+axum = { workspace = true }
+anyhow = { workspace = true }
+rustls-acme = { workspace = true }
+axum-server = { workspace = true }
+futures = { workspace = true }

@@ -1,0 +1,14 @@
+[package]
+name = "dallaspds-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+ipld-core = { workspace = true }
+figment = { workspace = true }

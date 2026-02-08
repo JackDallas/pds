@@ -1,0 +1,20 @@
+[package]
+name = "dallaspds-test-utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dallaspds-core = { workspace = true }
+dallaspds-crypto = { workspace = true }
+dallaspds-repo = { workspace = true }
+dallaspds-storage-sqlite = { workspace = true }
+dallaspds-blob-fs = { workspace = true }
+dallaspds-server = { workspace = true }
+sqlx = { workspace = true, features = ["sqlite"] }
+tokio = { workspace = true }
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+bytes = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+http-body-util = { workspace = true }
