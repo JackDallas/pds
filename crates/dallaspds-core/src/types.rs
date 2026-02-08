@@ -57,3 +57,21 @@ pub struct BlobMeta {
     pub size: i64,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCode {
+    pub code: String,
+    pub available_uses: i32,
+    pub disabled: bool,
+    pub for_account: String,
+    pub created_by: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub uses: Vec<InviteCodeUse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCodeUse {
+    pub code: String,
+    pub used_by: String,
+    pub used_at: chrono::DateTime<chrono::Utc>,
+}

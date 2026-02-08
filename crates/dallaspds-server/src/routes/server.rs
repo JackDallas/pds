@@ -82,6 +82,33 @@ where
         ));
     }
 
+    // Enforce invite code requirement
+    if state.config.invite_required {
+        let code_str = body.invite_code.as_deref().ok_or_else(|| {
+            XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "InvalidInviteCode",
+                "An invite code is required to create an account on this server",
+            )
+        })?;
+
+        let invite = state
+            .account_store
+            .get_invite_code(code_str)
+            .await?
+            .ok_or_else(|| {
+                XrpcError::new(StatusCode::BAD_REQUEST, "InvalidInviteCode", "Invite code not found")
+            })?;
+
+        if invite.disabled {
+            return Err(XrpcError::new(StatusCode::BAD_REQUEST, "InvalidInviteCode", "Invite code has been disabled"));
+        }
+
+        if invite.uses.len() as i32 >= invite.available_uses {
+            return Err(XrpcError::new(StatusCode::BAD_REQUEST, "InvalidInviteCode", "Invite code has no remaining uses"));
+        }
+    }
+
     // (b) Generate P-256 signing keypair.
     let signing_key = dallaspds_crypto::SigningKey::generate_p256().map_err(|e| {
         XrpcError::new(
@@ -147,6 +174,22 @@ where
         signing_key: signing_key.to_bytes(),
     };
     state.account_store.create_account(&input).await?;
+
+    // Record invite code usage
+    if state.config.invite_required {
+        if let Some(ref code_str) = body.invite_code {
+            state.account_store.use_invite_code(code_str, &did).await?;
+        }
+    }
+
+    // Send verification email if SMTP is configured
+    if let (Some(email_sender), Some(email)) = (&state.email_sender, &body.email) {
+        let token = hex::encode(rand::random::<[u8; 16]>());
+        let _ = state.account_store.create_email_token("confirm_email", &did, &token).await;
+        if let Err(e) = email_sender.send_verification_email(email, &token, &state.config.public_url).await {
+            tracing::warn!("Failed to send verification email: {e}");
+        }
+    }
 
     // (f2) Initialize the repository (empty MST + signed commit).
     let (repo_root_cid, repo_rev) = dallaspds_repo::create_repo(
@@ -428,4 +471,319 @@ where
         .await?;
 
     Ok(StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------
+// 7. requestEmailConfirmation
+// ---------------------------------------------------------------------------
+
+pub async fn request_email_confirmation<A, R, B>(
+    State(state): State<AppState<A, R, B>>,
+    user: AuthenticatedUser,
+) -> Result<Json<Value>, XrpcError>
+where
+    A: AccountStore,
+    R: RepoStore,
+    B: BlobStore,
+{
+    let account = state
+        .account_store
+        .get_account_by_did(&user.did)
+        .await?
+        .ok_or(PdsError::AccountNotFound)?;
+
+    let token = hex::encode(rand::random::<[u8; 16]>());
+    state
+        .account_store
+        .create_email_token("confirm_email", &user.did, &token)
+        .await?;
+
+    if let (Some(email_sender), Some(email)) = (&state.email_sender, &account.email) {
+        if let Err(e) = email_sender
+            .send_verification_email(email, &token, &state.config.public_url)
+            .await
+        {
+            tracing::warn!("Failed to send verification email: {e}");
+        }
+    }
+
+    Ok(Json(json!({})))
+}
+
+// ---------------------------------------------------------------------------
+// 8. confirmEmail
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmEmailRequest {
+    pub email: String,
+    pub token: String,
+}
+
+pub async fn confirm_email<A, R, B>(
+    State(state): State<AppState<A, R, B>>,
+    user: AuthenticatedUser,
+    Json(body): Json<ConfirmEmailRequest>,
+) -> Result<Json<Value>, XrpcError>
+where
+    A: AccountStore,
+    R: RepoStore,
+    B: BlobStore,
+{
+    let stored = state
+        .account_store
+        .get_email_token("confirm_email", &user.did)
+        .await?
+        .ok_or_else(|| {
+            XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "InvalidToken",
+                "No confirmation token found",
+            )
+        })?;
+
+    let (stored_token, requested_at) = stored;
+
+    if stored_token != body.token {
+        return Err(XrpcError::new(
+            StatusCode::BAD_REQUEST,
+            "InvalidToken",
+            "Invalid confirmation token",
+        ));
+    }
+
+    if requested_at + chrono::Duration::hours(1) < chrono::Utc::now() {
+        return Err(XrpcError::new(
+            StatusCode::BAD_REQUEST,
+            "ExpiredToken",
+            "Confirmation token has expired",
+        ));
+    }
+
+    state.account_store.confirm_email(&user.did).await?;
+    state
+        .account_store
+        .delete_email_token("confirm_email", &user.did)
+        .await?;
+
+    Ok(Json(json!({})))
+}
+
+// ---------------------------------------------------------------------------
+// 9. requestPasswordReset
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestPasswordResetRequest {
+    pub email: String,
+}
+
+pub async fn request_password_reset<A, R, B>(
+    State(state): State<AppState<A, R, B>>,
+    Json(body): Json<RequestPasswordResetRequest>,
+) -> Result<Json<Value>, XrpcError>
+where
+    A: AccountStore,
+    R: RepoStore,
+    B: BlobStore,
+{
+    // Always return 200 OK regardless of whether the email exists.
+    // This prevents email enumeration attacks.
+    if let Ok(Some(account)) = state.account_store.get_account_by_email(&body.email).await {
+        let token = hex::encode(rand::random::<[u8; 16]>());
+        if let Err(e) = state
+            .account_store
+            .create_email_token("reset_password", &account.did, &token)
+            .await
+        {
+            tracing::warn!("Failed to store password reset token: {e}");
+            return Ok(Json(json!({})));
+        }
+
+        if let Some(ref email_sender) = state.email_sender {
+            if let Err(e) = email_sender
+                .send_password_reset_email(&body.email, &token, &state.config.public_url)
+                .await
+            {
+                tracing::warn!("Failed to send password reset email: {e}");
+            }
+        }
+    }
+
+    Ok(Json(json!({})))
+}
+
+// ---------------------------------------------------------------------------
+// 10. resetPassword
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+pub async fn reset_password<A, R, B>(
+    State(state): State<AppState<A, R, B>>,
+    Json(body): Json<ResetPasswordRequest>,
+) -> Result<Json<Value>, XrpcError>
+where
+    A: AccountStore,
+    R: RepoStore,
+    B: BlobStore,
+{
+    let (did, requested_at) = state
+        .account_store
+        .get_email_token_by_token("reset_password", &body.token)
+        .await?
+        .ok_or_else(|| {
+            XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "InvalidToken",
+                "Invalid password reset token",
+            )
+        })?;
+
+    if requested_at + chrono::Duration::hours(1) < chrono::Utc::now() {
+        return Err(XrpcError::new(
+            StatusCode::BAD_REQUEST,
+            "ExpiredToken",
+            "Password reset token has expired",
+        ));
+    }
+
+    let password_hash = dallaspds_crypto::hash_password(&body.password).map_err(|e| {
+        XrpcError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "InternalServerError",
+            e.to_string(),
+        )
+    })?;
+
+    state
+        .account_store
+        .update_password(&did, &password_hash)
+        .await?;
+    state
+        .account_store
+        .delete_email_token("reset_password", &did)
+        .await?;
+    state
+        .account_store
+        .delete_refresh_tokens_for_did(&did)
+        .await?;
+
+    Ok(Json(json!({})))
+}
+
+// ---------------------------------------------------------------------------
+// 11. requestEmailUpdate
+// ---------------------------------------------------------------------------
+
+pub async fn request_email_update<A, R, B>(
+    State(state): State<AppState<A, R, B>>,
+    user: AuthenticatedUser,
+) -> Result<Json<Value>, XrpcError>
+where
+    A: AccountStore,
+    R: RepoStore,
+    B: BlobStore,
+{
+    let token = hex::encode(rand::random::<[u8; 16]>());
+    state
+        .account_store
+        .create_email_token("update_email", &user.did, &token)
+        .await?;
+
+    let account = state
+        .account_store
+        .get_account_by_did(&user.did)
+        .await?
+        .ok_or(PdsError::AccountNotFound)?;
+
+    if let (Some(email_sender), Some(email)) = (&state.email_sender, &account.email) {
+        if let Err(e) = email_sender
+            .send_email_update_email(email, &token, &state.config.public_url)
+            .await
+        {
+            tracing::warn!("Failed to send email update email: {e}");
+        }
+    }
+
+    Ok(Json(json!({ "tokenRequired": state.email_sender.is_some() })))
+}
+
+// ---------------------------------------------------------------------------
+// 12. updateEmail
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateEmailRequest {
+    pub email: String,
+    pub token: Option<String>,
+}
+
+pub async fn update_email<A, R, B>(
+    State(state): State<AppState<A, R, B>>,
+    user: AuthenticatedUser,
+    Json(body): Json<UpdateEmailRequest>,
+) -> Result<Json<Value>, XrpcError>
+where
+    A: AccountStore,
+    R: RepoStore,
+    B: BlobStore,
+{
+    if state.email_sender.is_some() {
+        let provided_token = body.token.as_deref().ok_or_else(|| {
+            XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "TokenRequired",
+                "Email verification token is required",
+            )
+        })?;
+
+        let (stored_token, requested_at) = state
+            .account_store
+            .get_email_token("update_email", &user.did)
+            .await?
+            .ok_or_else(|| {
+                XrpcError::new(
+                    StatusCode::BAD_REQUEST,
+                    "InvalidToken",
+                    "No email update token found",
+                )
+            })?;
+
+        if stored_token != provided_token {
+            return Err(XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "InvalidToken",
+                "Invalid email update token",
+            ));
+        }
+
+        if requested_at + chrono::Duration::hours(1) < chrono::Utc::now() {
+            return Err(XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "ExpiredToken",
+                "Email update token has expired",
+            ));
+        }
+
+        state
+            .account_store
+            .delete_email_token("update_email", &user.did)
+            .await?;
+    }
+
+    state
+        .account_store
+        .update_email(&user.did, &body.email)
+        .await?;
+
+    Ok(Json(json!({})))
 }

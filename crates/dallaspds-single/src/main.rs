@@ -38,6 +38,13 @@ async fn main() -> anyhow::Result<()> {
 
     let event_store: Arc<dyn EventStore> = Arc::new(event_store);
 
+    let email_sender = config.smtp.as_ref().map(|smtp_config| {
+        Arc::new(
+            dallaspds_server::email::EmailSender::new(smtp_config)
+                .expect("Failed to init SMTP"),
+        )
+    });
+
     let state = AppState {
         account_store: Arc::new(account_store),
         repo_store: Arc::new(repo_store),
@@ -46,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
         sequencer: Some(sequencer),
         relay_notifier,
         event_store: Some(event_store),
+        email_sender,
     };
 
     let router = build_router(state);

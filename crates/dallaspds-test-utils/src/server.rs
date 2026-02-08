@@ -42,7 +42,9 @@ pub fn create_test_config() -> PdsConfig {
         appview_url: None,
         appview_did: None,
         relay_url: None,
+        admin_dids: vec![],
         tls: None,
+        smtp: None,
     }
 }
 
@@ -59,6 +61,7 @@ pub fn create_test_app_state(
         sequencer: Some(sequencer),
         relay_notifier: None,
         event_store: Some(stores.event_store_arc()),
+        email_sender: None,
     }
 }
 
@@ -147,4 +150,32 @@ pub async fn send_request(
     };
 
     (status, json)
+}
+
+/// Create a test app state with a custom config (e.g., with admin_dids).
+pub fn create_test_app_state_with_config(
+    stores: &TestStores,
+    config: PdsConfig,
+) -> AppState<SqliteAccountStore, SqliteRepoStore, FsBlobStore> {
+    let sequencer = Sequencer::new(1, 256);
+
+    AppState {
+        account_store: Arc::new(stores.account_store.clone()),
+        repo_store: Arc::new(stores.repo_store.clone()),
+        blob_store: Arc::new(stores.blob_store.clone()),
+        config: Arc::new(config),
+        sequencer: Some(sequencer),
+        relay_notifier: None,
+        event_store: Some(stores.event_store_arc()),
+        email_sender: None,
+    }
+}
+
+/// Create a test router with custom config.
+pub fn create_test_router_with_config(
+    stores: &TestStores,
+    config: PdsConfig,
+) -> Router {
+    let state = create_test_app_state_with_config(stores, config);
+    build_router(state)
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use dallaspds_core::config::PdsConfig;
 use dallaspds_core::traits::*;
 
+use crate::email::EmailSender;
 use crate::firehose::relay::RelayNotifier;
 use crate::firehose::sequencer::Sequencer;
 
@@ -23,4 +24,6 @@ where
     pub relay_notifier: Option<RelayNotifier>,
     /// Event store for firehose persistence (None if not configured).
     pub event_store: Option<Arc<dyn EventStore>>,
+    /// Email sender (None if SMTP is not configured).
+    pub email_sender: Option<Arc<EmailSender>>,
 }

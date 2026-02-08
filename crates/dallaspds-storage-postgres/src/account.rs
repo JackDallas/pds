@@ -3,8 +3,8 @@ use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
 
 use dallaspds_core::{
-    AccountStatus, AccountStore, ActorAccount, CreateAccountInput, PdsError, PdsResult,
-    RefreshTokenRecord, RepoRoot,
+    AccountStatus, AccountStore, ActorAccount, CreateAccountInput, InviteCode, InviteCodeUse,
+    PdsError, PdsResult, RefreshTokenRecord, RepoRoot,
 };
 
 #[derive(Clone)]
@@ -381,5 +381,64 @@ impl AccountStore for PostgresAccountStore {
         };
 
         rows.iter().map(row_to_actor_account).collect()
+    }
+
+    // Invite code management (stubs for PostgreSQL)
+    async fn create_invite_code(&self, _code: &str, _available_uses: i32, _for_account: &str, _created_by: &str) -> PdsResult<InviteCode> {
+        todo!("PostgreSQL support: create_invite_code")
+    }
+
+    async fn get_invite_code(&self, _code: &str) -> PdsResult<Option<InviteCode>> {
+        todo!("PostgreSQL support: get_invite_code")
+    }
+
+    async fn use_invite_code(&self, _code: &str, _used_by: &str) -> PdsResult<()> {
+        todo!("PostgreSQL support: use_invite_code")
+    }
+
+    async fn list_invite_codes(&self, _cursor: Option<&str>, _limit: usize) -> PdsResult<Vec<InviteCode>> {
+        todo!("PostgreSQL support: list_invite_codes")
+    }
+
+    async fn list_invite_codes_for_account(&self, _did: &str) -> PdsResult<Vec<InviteCode>> {
+        todo!("PostgreSQL support: list_invite_codes_for_account")
+    }
+
+    async fn disable_invite_code(&self, _code: &str) -> PdsResult<()> {
+        todo!("PostgreSQL support: disable_invite_code")
+    }
+
+    // Account search and moderation (stubs for PostgreSQL)
+    async fn search_accounts(&self, _query: Option<&str>, _cursor: Option<&str>, _limit: usize) -> PdsResult<Vec<ActorAccount>> {
+        todo!("PostgreSQL support: search_accounts")
+    }
+
+    async fn set_takedown(&self, _did: &str, _takedown_ref: Option<&str>) -> PdsResult<()> {
+        todo!("PostgreSQL support: set_takedown")
+    }
+
+    // Email token management (stubs for PostgreSQL)
+    async fn create_email_token(&self, _purpose: &str, _did: &str, _token: &str) -> PdsResult<()> {
+        todo!("PostgreSQL support: create_email_token")
+    }
+
+    async fn get_email_token(&self, _purpose: &str, _did: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
+        todo!("PostgreSQL support: get_email_token")
+    }
+
+    async fn get_email_token_by_token(&self, _purpose: &str, _token: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
+        todo!("PostgreSQL support: get_email_token_by_token")
+    }
+
+    async fn delete_email_token(&self, _purpose: &str, _did: &str) -> PdsResult<()> {
+        todo!("PostgreSQL support: delete_email_token")
+    }
+
+    async fn confirm_email(&self, _did: &str) -> PdsResult<()> {
+        todo!("PostgreSQL support: confirm_email")
+    }
+
+    async fn update_email(&self, _did: &str, _email: &str) -> PdsResult<()> {
+        todo!("PostgreSQL support: update_email")
     }
 }

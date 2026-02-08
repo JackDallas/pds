@@ -5,6 +5,7 @@ plc_url = "https://plc.directory"
 available_user_domains = [".localhost"]
 invite_required = false
 mode = "Multi"
+admin_dids = []
 
 [jwt]
 access_secret = "CHANGE-ME-IN-COOLIFY"

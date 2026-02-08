@@ -41,6 +41,15 @@ pub enum PdsError {
     #[error("session expired")]
     SessionExpired,
 
+    #[error("invalid invite code")]
+    InvalidInviteCode,
+
+    #[error("invite code has no remaining uses")]
+    InviteCodeExhausted,
+
+    #[error("authorization required: {0}")]
+    Forbidden(String),
+
     #[error("internal error: {0}")]
     InternalError(String),
 }

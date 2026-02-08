@@ -265,3 +265,205 @@ async fn delete_session_clears_tokens() {
     .await;
     assert_eq!(status, 200);
 }
+
+// ── Email Confirmation ──────────────────────────────────────────────────
+
+#[tokio::test]
+async fn confirm_email_with_valid_token() {
+    use dallaspds_core::AccountStore;
+
+    let (router, stores) = create_test_router_and_stores().await;
+    let (did, access_jwt, _) = create_account_via_api(&router, "confirm.test.pds.local").await;
+
+    // Store a confirm_email token directly via the store
+    stores
+        .account_store
+        .create_email_token("confirm_email", &did, "test-token-123")
+        .await
+        .unwrap();
+
+    // Call confirmEmail with valid token + auth
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.confirmEmail",
+        Some(&access_jwt),
+        Some(json!({
+            "email": "confirm@test.com",
+            "token": "test-token-123",
+        })),
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+
+    // Verify emailConfirmed via getSession
+    let (status, body) = send_request(
+        &router,
+        "GET",
+        "/xrpc/com.atproto.server.getSession",
+        Some(&access_jwt),
+        None,
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+    assert_eq!(body["emailConfirmed"], true);
+}
+
+#[tokio::test]
+async fn confirm_email_invalid_token_rejected() {
+    use dallaspds_core::AccountStore;
+
+    let (router, stores) = create_test_router_and_stores().await;
+    let (did, access_jwt, _) = create_account_via_api(&router, "badtok.test.pds.local").await;
+
+    // Store a token
+    stores
+        .account_store
+        .create_email_token("confirm_email", &did, "real-token-abc")
+        .await
+        .unwrap();
+
+    // Call confirmEmail with wrong token
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.confirmEmail",
+        Some(&access_jwt),
+        Some(json!({
+            "email": "badtok@test.com",
+            "token": "wrong-token-xyz",
+        })),
+    )
+    .await;
+    assert_xrpc_error(status, &body, 400, "InvalidToken");
+}
+
+// ── Password Reset ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn reset_password_flow() {
+    use dallaspds_core::AccountStore;
+
+    let (router, stores) = create_test_router_and_stores().await;
+    let (did, _, _) = create_account_via_api(&router, "reset.test.pds.local").await;
+
+    // Store a reset_password token directly
+    stores
+        .account_store
+        .create_email_token("reset_password", &did, "reset-token-456")
+        .await
+        .unwrap();
+
+    // Call resetPassword with valid token and new password
+    let new_password = "new-password-123";
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.resetPassword",
+        None,
+        Some(json!({
+            "token": "reset-token-456",
+            "password": new_password,
+        })),
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+
+    // Verify can login with new password
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.createSession",
+        None,
+        Some(json!({
+            "identifier": "reset.test.pds.local",
+            "password": new_password,
+        })),
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+    assert!(body["accessJwt"].as_str().is_some());
+
+    // Verify old password no longer works
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.createSession",
+        None,
+        Some(json!({
+            "identifier": "reset.test.pds.local",
+            "password": TEST_PASSWORD,
+        })),
+    )
+    .await;
+    assert_xrpc_error(status, &body, 401, "InvalidPassword");
+}
+
+#[tokio::test]
+async fn request_password_reset_unknown_email_200() {
+    let (router, _stores) = create_test_router_and_stores().await;
+
+    // Call requestPasswordReset with unknown email — should still return 200
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.requestPasswordReset",
+        None,
+        Some(json!({
+            "email": "unknown@example.com",
+        })),
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+}
+
+// ── Email Update ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn update_email_without_smtp() {
+    let (router, _stores) = create_test_router_and_stores().await;
+    let (_, access_jwt, _) = create_account_via_api(&router, "updeml.test.pds.local").await;
+
+    // Call updateEmail — no token needed since no SMTP configured
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.updateEmail",
+        Some(&access_jwt),
+        Some(json!({
+            "email": "new@test.com",
+        })),
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+
+    // Verify email changed via getSession
+    let (status, body) = send_request(
+        &router,
+        "GET",
+        "/xrpc/com.atproto.server.getSession",
+        Some(&access_jwt),
+        None,
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+    assert_eq!(body["email"], "new@test.com");
+}
+
+#[tokio::test]
+async fn request_email_update_returns_token_not_required() {
+    let (router, _stores) = create_test_router_and_stores().await;
+    let (_, access_jwt, _) = create_account_via_api(&router, "reqeml.test.pds.local").await;
+
+    // Call requestEmailUpdate — since no SMTP, tokenRequired should be false
+    let (status, body) = send_request(
+        &router,
+        "POST",
+        "/xrpc/com.atproto.server.requestEmailUpdate",
+        Some(&access_jwt),
+        None,
+    )
+    .await;
+    assert_xrpc_ok(status, &body);
+    assert_eq!(body["tokenRequired"], false);
+}

@@ -104,3 +104,47 @@ where
         }
     }
 }
+
+/// Admin DID list, added as an Axum Extension.
+#[derive(Clone)]
+pub struct AdminDids(pub Vec<String>);
+
+/// Authenticated admin user.
+#[derive(Debug, Clone)]
+pub struct AdminAuth {
+    pub did: String,
+}
+
+impl<S> FromRequestParts<S> for AdminAuth
+where
+    S: Send + Sync,
+{
+    type Rejection = XrpcError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // First, extract the authenticated user
+        let user = AuthenticatedUser::from_request_parts(parts, state).await?;
+
+        // Then, extract the admin DID list
+        let Extension(admin_dids) = Extension::<AdminDids>::from_request_parts(parts, state)
+            .await
+            .map_err(|_| {
+                XrpcError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "InternalError",
+                    "Admin DID list not configured",
+                )
+            })?;
+
+        // Check if the user's DID is in the admin list
+        if !admin_dids.0.contains(&user.did) {
+            return Err(XrpcError::new(
+                StatusCode::FORBIDDEN,
+                "Forbidden",
+                "Admin access required",
+            ));
+        }
+
+        Ok(AdminAuth { did: user.did })
+    }
+}

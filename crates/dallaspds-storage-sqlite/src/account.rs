@@ -3,8 +3,8 @@ use chrono::{NaiveDateTime, TimeZone, Utc};
 use sqlx::{Row, SqlitePool};
 
 use dallaspds_core::{
-    AccountStatus, AccountStore, ActorAccount, CreateAccountInput, PdsError, PdsResult,
-    RefreshTokenRecord, RepoRoot,
+    AccountStatus, AccountStore, ActorAccount, CreateAccountInput, InviteCode, InviteCodeUse,
+    PdsError, PdsResult, RefreshTokenRecord, RepoRoot,
 };
 
 #[derive(Clone)]
@@ -408,5 +408,285 @@ impl AccountStore for SqliteAccountStore {
         };
 
         rows.iter().map(row_to_actor_account).collect()
+    }
+
+    // Invite code management (stubs for Phase 2 compatibility)
+    async fn create_invite_code(&self, code: &str, available_uses: i32, for_account: &str, created_by: &str) -> PdsResult<InviteCode> {
+        sqlx::query("INSERT INTO invite_code (code, available_uses, for_account, created_by) VALUES (?, ?, ?, ?)")
+            .bind(code)
+            .bind(available_uses)
+            .bind(for_account)
+            .bind(created_by)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        self.get_invite_code(code)
+            .await?
+            .ok_or_else(|| PdsError::Storage("failed to retrieve invite code after creation".to_string()))
+    }
+
+    async fn get_invite_code(&self, code: &str) -> PdsResult<Option<InviteCode>> {
+        let row = sqlx::query("SELECT code, available_uses, disabled, for_account, created_by, created_at FROM invite_code WHERE code = ?")
+            .bind(code)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let row = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let code_val: String = row.try_get("code").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let available_uses: i32 = row.try_get("available_uses").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let disabled_int: i32 = row.try_get("disabled").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let for_account: String = row.try_get("for_account").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let created_by: String = row.try_get("created_by").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let created_at: String = row.try_get("created_at").map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let use_rows = sqlx::query("SELECT code, used_by, used_at FROM invite_code_use WHERE code = ?")
+            .bind(&code_val)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let mut uses = Vec::new();
+        for ur in &use_rows {
+            let u_code: String = ur.try_get("code").map_err(|e| PdsError::Storage(e.to_string()))?;
+            let used_by: String = ur.try_get("used_by").map_err(|e| PdsError::Storage(e.to_string()))?;
+            let used_at: String = ur.try_get("used_at").map_err(|e| PdsError::Storage(e.to_string()))?;
+            uses.push(InviteCodeUse {
+                code: u_code,
+                used_by,
+                used_at: parse_datetime(&used_at)?,
+            });
+        }
+
+        Ok(Some(InviteCode {
+            code: code_val,
+            available_uses,
+            disabled: disabled_int != 0,
+            for_account,
+            created_by,
+            created_at: parse_datetime(&created_at)?,
+            uses,
+        }))
+    }
+
+    async fn use_invite_code(&self, code: &str, used_by: &str) -> PdsResult<()> {
+        sqlx::query("INSERT INTO invite_code_use (code, used_by) VALUES (?, ?)")
+            .bind(code)
+            .bind(used_by)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn list_invite_codes(&self, cursor: Option<&str>, limit: usize) -> PdsResult<Vec<InviteCode>> {
+        let codes: Vec<String> = if let Some(cursor) = cursor {
+            let rows = sqlx::query("SELECT code FROM invite_code WHERE code < ? ORDER BY created_at DESC LIMIT ?")
+                .bind(cursor)
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| PdsError::Storage(e.to_string()))?;
+            rows.iter()
+                .map(|r| r.try_get("code").map_err(|e| PdsError::Storage(e.to_string())))
+                .collect::<PdsResult<Vec<String>>>()?
+        } else {
+            let rows = sqlx::query("SELECT code FROM invite_code ORDER BY created_at DESC LIMIT ?")
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| PdsError::Storage(e.to_string()))?;
+            rows.iter()
+                .map(|r| r.try_get("code").map_err(|e| PdsError::Storage(e.to_string())))
+                .collect::<PdsResult<Vec<String>>>()?
+        };
+
+        let mut result = Vec::new();
+        for code in &codes {
+            if let Some(invite) = self.get_invite_code(code).await? {
+                result.push(invite);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn list_invite_codes_for_account(&self, did: &str) -> PdsResult<Vec<InviteCode>> {
+        let rows = sqlx::query("SELECT code FROM invite_code WHERE for_account = ? OR created_by = ?")
+            .bind(did)
+            .bind(did)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let codes: Vec<String> = rows.iter()
+            .map(|r| r.try_get("code").map_err(|e| PdsError::Storage(e.to_string())))
+            .collect::<PdsResult<Vec<String>>>()?;
+
+        let mut result = Vec::new();
+        for code in &codes {
+            if let Some(invite) = self.get_invite_code(code).await? {
+                result.push(invite);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn disable_invite_code(&self, code: &str) -> PdsResult<()> {
+        sqlx::query("UPDATE invite_code SET disabled = 1 WHERE code = ?")
+            .bind(code)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    // Account search and moderation (stubs for Phase 2 compatibility)
+    async fn search_accounts(&self, query: Option<&str>, cursor: Option<&str>, limit: usize) -> PdsResult<Vec<ActorAccount>> {
+        let rows = match (query, cursor) {
+            (Some(q), Some(cursor)) => {
+                let pattern = format!("%{}%", q);
+                let sql = format!("{ACCOUNT_SELECT} WHERE (a.handle LIKE ? OR ac.email LIKE ?) AND a.did > ? ORDER BY a.did ASC LIMIT ?");
+                sqlx::query(&sql)
+                    .bind(&pattern)
+                    .bind(&pattern)
+                    .bind(cursor)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+            (Some(q), None) => {
+                let pattern = format!("%{}%", q);
+                let sql = format!("{ACCOUNT_SELECT} WHERE (a.handle LIKE ? OR ac.email LIKE ?) ORDER BY a.did ASC LIMIT ?");
+                sqlx::query(&sql)
+                    .bind(&pattern)
+                    .bind(&pattern)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+            (None, Some(cursor)) => {
+                let sql = format!("{ACCOUNT_SELECT} WHERE a.did > ? ORDER BY a.did ASC LIMIT ?");
+                sqlx::query(&sql)
+                    .bind(cursor)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+            (None, None) => {
+                let sql = format!("{ACCOUNT_SELECT} ORDER BY a.did ASC LIMIT ?");
+                sqlx::query(&sql)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+        };
+
+        rows.iter().map(row_to_actor_account).collect()
+    }
+
+    async fn set_takedown(&self, did: &str, takedown_ref: Option<&str>) -> PdsResult<()> {
+        sqlx::query("UPDATE actor SET takedown_ref = ? WHERE did = ?")
+            .bind(takedown_ref)
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    // Email token management (Phase 2)
+    async fn create_email_token(&self, purpose: &str, did: &str, token: &str) -> PdsResult<()> {
+        sqlx::query("INSERT OR REPLACE INTO email_token (purpose, did, token) VALUES (?, ?, ?)")
+            .bind(purpose)
+            .bind(did)
+            .bind(token)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn get_email_token(&self, purpose: &str, did: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
+        let row = sqlx::query("SELECT token, requested_at FROM email_token WHERE purpose = ? AND did = ?")
+            .bind(purpose)
+            .bind(did)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        match row {
+            Some(ref r) => {
+                let token: String = r
+                    .try_get("token")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                let requested_at: String = r
+                    .try_get("requested_at")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                
+                Ok(Some((token, parse_datetime(&requested_at)?)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn get_email_token_by_token(&self, purpose: &str, token: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
+        let row = sqlx::query("SELECT did, requested_at FROM email_token WHERE purpose = ? AND token = ?")
+            .bind(purpose)
+            .bind(token)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        match row {
+            Some(ref r) => {
+                let did: String = r
+                    .try_get("did")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                let requested_at: String = r
+                    .try_get("requested_at")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                
+                Ok(Some((did, parse_datetime(&requested_at)?)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn delete_email_token(&self, purpose: &str, did: &str) -> PdsResult<()> {
+        sqlx::query("DELETE FROM email_token WHERE purpose = ? AND did = ?")
+            .bind(purpose)
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn confirm_email(&self, did: &str) -> PdsResult<()> {
+        sqlx::query("UPDATE account SET email_confirmed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE did = ?")
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn update_email(&self, did: &str, email: &str) -> PdsResult<()> {
+        sqlx::query("UPDATE account SET email = ? WHERE did = ?")
+            .bind(email)
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 }

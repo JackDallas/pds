@@ -28,6 +28,11 @@ bytes = { workspace = true }
 serde_bytes = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures = { workspace = true }
+rand.workspace = true
+hex = { workspace = true }
+lettre = { workspace = true }
+rust-embed = { workspace = true }
+mime_guess = { workspace = true }
 
 [dev-dependencies]
 dallaspds-test-utils = { workspace = true }

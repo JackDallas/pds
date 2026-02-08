@@ -5,6 +5,15 @@ use figment::{
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct SmtpConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub from_address: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub enum PdsMode {
     Single,
     Multi,
@@ -32,9 +41,15 @@ pub struct PdsConfig {
     /// URL of the relay/BGS to notify via requestCrawl after writes.
     #[serde(default)]
     pub relay_url: Option<String>,
+    /// DIDs that have admin privileges on this PDS.
+    #[serde(default)]
+    pub admin_dids: Vec<String>,
     /// Optional TLS configuration for automatic Let's Encrypt certificates.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
+    /// Optional SMTP configuration for email sending.
+    #[serde(default)]
+    pub smtp: Option<SmtpConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

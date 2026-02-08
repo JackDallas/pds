@@ -4,6 +4,7 @@ public_url = "http://localhost:3000"
 plc_url = "https://plc.directory"
 available_user_domains = [".localhost"]
 invite_required = false
+admin_dids = []
 
 [jwt]
 access_secret = "CHANGE-ME-IN-COOLIFY"

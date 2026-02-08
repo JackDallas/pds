@@ -9,7 +9,7 @@ pub mod well_known;
 
 use axum::Extension;
 
-use crate::auth::{JwtRefreshSecret, JwtSecret};
+use crate::auth::{AdminDids, JwtRefreshSecret, JwtSecret};
 use crate::state::AppState;
 use dallaspds_core::traits::*;
 
@@ -21,6 +21,7 @@ where
 {
     let jwt_secret = JwtSecret(state.config.jwt.access_secret.clone());
     let jwt_refresh_secret = JwtRefreshSecret(state.config.jwt.refresh_secret.clone());
+    let admin_dids = AdminDids(state.config.admin_dids.clone());
 
     axum::Router::new()
         // Health
@@ -50,6 +51,30 @@ where
             "/xrpc/com.atproto.server.deleteSession",
             axum::routing::post(server::delete_session::<A, R, B>),
         )
+        .route(
+            "/xrpc/com.atproto.server.requestEmailConfirmation",
+            axum::routing::post(server::request_email_confirmation::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.confirmEmail",
+            axum::routing::post(server::confirm_email::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.requestPasswordReset",
+            axum::routing::post(server::request_password_reset::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.resetPassword",
+            axum::routing::post(server::reset_password::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.requestEmailUpdate",
+            axum::routing::post(server::request_email_update::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.updateEmail",
+            axum::routing::post(server::update_email::<A, R, B>),
+        )
         // Account lifecycle
         .route(
             "/xrpc/com.atproto.server.deleteAccount",
@@ -62,6 +87,47 @@ where
         .route(
             "/xrpc/com.atproto.server.activateAccount",
             axum::routing::post(admin::activate_account::<A, R, B>),
+        )
+        // Admin endpoints
+        .route(
+            "/xrpc/com.atproto.admin.getAccountInfo",
+            axum::routing::get(admin::get_account_info::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.admin.getSubjectStatus",
+            axum::routing::get(admin::get_subject_status::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.admin.updateSubjectStatus",
+            axum::routing::post(admin::update_subject_status::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.createInviteCode",
+            axum::routing::post(admin::create_invite_code_endpoint::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.createInviteCodes",
+            axum::routing::post(admin::create_invite_codes_endpoint::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.atproto.server.getAccountInviteCodes",
+            axum::routing::get(admin::get_account_invite_codes::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.dallaspds.admin.listAccounts",
+            axum::routing::get(admin::list_accounts_admin::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.dallaspds.admin.checkAdminStatus",
+            axum::routing::get(admin::check_admin_status::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.dallaspds.admin.listInviteCodes",
+            axum::routing::get(admin::list_invite_codes_admin::<A, R, B>),
+        )
+        .route(
+            "/xrpc/com.dallaspds.admin.getConfig",
+            axum::routing::get(admin::get_config::<A, R, B>),
         )
         // Repo endpoints
         .route(
@@ -166,10 +232,20 @@ where
             "/.well-known/atproto-did",
             axum::routing::get(well_known::atproto_did::<A, R, B>),
         )
+        // Admin UI (embedded SPA)
+        .route(
+            "/admin",
+            axum::routing::get(crate::admin_ui::admin_ui_handler),
+        )
+        .route(
+            "/admin/{*path}",
+            axum::routing::get(crate::admin_ui::admin_ui_handler),
+        )
         // Fallback: proxy unknown XRPC methods to the configured AppView.
         .fallback(crate::proxy::pipethrough::pipethrough_fallback::<A, R, B>)
         .layer(Extension(jwt_secret))
         .layer(Extension(jwt_refresh_secret))
+        .layer(Extension(admin_dids))
         // CORS: allow any origin for XRPC (AT Protocol expects this).
         .layer(
             tower_http::cors::CorsLayer::new()

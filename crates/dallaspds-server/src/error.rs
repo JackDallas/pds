@@ -98,6 +98,21 @@ impl From<PdsError> for XrpcError {
                 "ExpiredToken",
                 err.to_string(),
             ),
+            PdsError::InvalidInviteCode => XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "InvalidInviteCode",
+                err.to_string(),
+            ),
+            PdsError::InviteCodeExhausted => XrpcError::new(
+                StatusCode::BAD_REQUEST,
+                "InvalidInviteCode",
+                "Invite code has no remaining uses",
+            ),
+            PdsError::Forbidden(_) => XrpcError::new(
+                StatusCode::FORBIDDEN,
+                "AuthorizationError",
+                err.to_string(),
+            ),
             PdsError::InternalError(_) => XrpcError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "InternalServerError",

@@ -6,7 +6,8 @@ pub use assertions::{assert_xrpc_error, assert_xrpc_ok};
 pub use server::{
     TEST_ACCESS_SECRET, TEST_PASSWORD, TEST_REFRESH_SECRET,
     create_account_via_api, create_test_app_state, create_test_router,
-    create_test_router_and_stores, send_request,
+    create_test_router_and_stores, create_test_config, create_test_app_state_with_config,
+    create_test_router_with_config, send_request,
 };
 pub use stores::{TestStores, create_test_stores};
 

@@ -8,5 +8,6 @@ pub use error::{PdsError, PdsResult};
 pub use traits::{AccountStore, BlobStore, EventStore, RepoStore};
 pub use traits::event_store::PersistedEvent;
 pub use types::{
-    AccountStatus, ActorAccount, BlobMeta, CreateAccountInput, RefreshTokenRecord, RepoRoot,
+    AccountStatus, ActorAccount, BlobMeta, CreateAccountInput, InviteCode, InviteCodeUse,
+    RefreshTokenRecord, RepoRoot,
 };
