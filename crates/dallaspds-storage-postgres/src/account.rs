@@ -383,62 +383,283 @@ impl AccountStore for PostgresAccountStore {
         rows.iter().map(row_to_actor_account).collect()
     }
 
-    // Invite code management (stubs for PostgreSQL)
-    async fn create_invite_code(&self, _code: &str, _available_uses: i32, _for_account: &str, _created_by: &str) -> PdsResult<InviteCode> {
-        todo!("PostgreSQL support: create_invite_code")
+    // Invite code management
+    async fn create_invite_code(&self, code: &str, available_uses: i32, for_account: &str, created_by: &str) -> PdsResult<InviteCode> {
+        sqlx::query("INSERT INTO invite_code (code, available_uses, for_account, created_by) VALUES ($1, $2, $3, $4)")
+            .bind(code)
+            .bind(available_uses)
+            .bind(for_account)
+            .bind(created_by)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        self.get_invite_code(code)
+            .await?
+            .ok_or_else(|| PdsError::Storage("failed to retrieve invite code after creation".to_string()))
     }
 
-    async fn get_invite_code(&self, _code: &str) -> PdsResult<Option<InviteCode>> {
-        todo!("PostgreSQL support: get_invite_code")
+    async fn get_invite_code(&self, code: &str) -> PdsResult<Option<InviteCode>> {
+        let row = sqlx::query("SELECT code, available_uses, disabled, for_account, created_by, created_at FROM invite_code WHERE code = $1")
+            .bind(code)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let row = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
+
+        let code_val: String = row.try_get("code").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let available_uses: i32 = row.try_get("available_uses").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let disabled_int: i32 = row.try_get("disabled").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let for_account: String = row.try_get("for_account").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let created_by: String = row.try_get("created_by").map_err(|e| PdsError::Storage(e.to_string()))?;
+        let created_at: DateTime<Utc> = row.try_get("created_at").map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let use_rows = sqlx::query("SELECT code, used_by, used_at FROM invite_code_use WHERE code = $1")
+            .bind(&code_val)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let mut uses = Vec::new();
+        for ur in &use_rows {
+            let u_code: String = ur.try_get("code").map_err(|e| PdsError::Storage(e.to_string()))?;
+            let used_by: String = ur.try_get("used_by").map_err(|e| PdsError::Storage(e.to_string()))?;
+            let used_at: DateTime<Utc> = ur.try_get("used_at").map_err(|e| PdsError::Storage(e.to_string()))?;
+            uses.push(InviteCodeUse {
+                code: u_code,
+                used_by,
+                used_at,
+            });
+        }
+
+        Ok(Some(InviteCode {
+            code: code_val,
+            available_uses,
+            disabled: disabled_int != 0,
+            for_account,
+            created_by,
+            created_at,
+            uses,
+        }))
     }
 
-    async fn use_invite_code(&self, _code: &str, _used_by: &str) -> PdsResult<()> {
-        todo!("PostgreSQL support: use_invite_code")
+    async fn use_invite_code(&self, code: &str, used_by: &str) -> PdsResult<()> {
+        sqlx::query("INSERT INTO invite_code_use (code, used_by) VALUES ($1, $2)")
+            .bind(code)
+            .bind(used_by)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 
-    async fn list_invite_codes(&self, _cursor: Option<&str>, _limit: usize) -> PdsResult<Vec<InviteCode>> {
-        todo!("PostgreSQL support: list_invite_codes")
+    async fn list_invite_codes(&self, cursor: Option<&str>, limit: usize) -> PdsResult<Vec<InviteCode>> {
+        let codes: Vec<String> = if let Some(cursor) = cursor {
+            let rows = sqlx::query("SELECT code FROM invite_code WHERE code < $1 ORDER BY created_at DESC LIMIT $2")
+                .bind(cursor)
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| PdsError::Storage(e.to_string()))?;
+            rows.iter()
+                .map(|r| r.try_get("code").map_err(|e| PdsError::Storage(e.to_string())))
+                .collect::<PdsResult<Vec<String>>>()?
+        } else {
+            let rows = sqlx::query("SELECT code FROM invite_code ORDER BY created_at DESC LIMIT $1")
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| PdsError::Storage(e.to_string()))?;
+            rows.iter()
+                .map(|r| r.try_get("code").map_err(|e| PdsError::Storage(e.to_string())))
+                .collect::<PdsResult<Vec<String>>>()?
+        };
+
+        let mut result = Vec::new();
+        for code in &codes {
+            if let Some(invite) = self.get_invite_code(code).await? {
+                result.push(invite);
+            }
+        }
+        Ok(result)
     }
 
-    async fn list_invite_codes_for_account(&self, _did: &str) -> PdsResult<Vec<InviteCode>> {
-        todo!("PostgreSQL support: list_invite_codes_for_account")
+    async fn list_invite_codes_for_account(&self, did: &str) -> PdsResult<Vec<InviteCode>> {
+        let rows = sqlx::query("SELECT code FROM invite_code WHERE for_account = $1 OR created_by = $1")
+            .bind(did)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        let codes: Vec<String> = rows.iter()
+            .map(|r| r.try_get("code").map_err(|e| PdsError::Storage(e.to_string())))
+            .collect::<PdsResult<Vec<String>>>()?;
+
+        let mut result = Vec::new();
+        for code in &codes {
+            if let Some(invite) = self.get_invite_code(code).await? {
+                result.push(invite);
+            }
+        }
+        Ok(result)
     }
 
-    async fn disable_invite_code(&self, _code: &str) -> PdsResult<()> {
-        todo!("PostgreSQL support: disable_invite_code")
+    async fn disable_invite_code(&self, code: &str) -> PdsResult<()> {
+        sqlx::query("UPDATE invite_code SET disabled = 1 WHERE code = $1")
+            .bind(code)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 
-    // Account search and moderation (stubs for PostgreSQL)
-    async fn search_accounts(&self, _query: Option<&str>, _cursor: Option<&str>, _limit: usize) -> PdsResult<Vec<ActorAccount>> {
-        todo!("PostgreSQL support: search_accounts")
+    // Account search and moderation
+    async fn search_accounts(&self, query: Option<&str>, cursor: Option<&str>, limit: usize) -> PdsResult<Vec<ActorAccount>> {
+        let rows = match (query, cursor) {
+            (Some(q), Some(cursor)) => {
+                let pattern = format!("%{}%", q);
+                let sql = format!("{ACCOUNT_SELECT} WHERE (a.handle ILIKE $1 OR ac.email ILIKE $2) AND a.did > $3 ORDER BY a.did ASC LIMIT $4");
+                sqlx::query(&sql)
+                    .bind(&pattern)
+                    .bind(&pattern)
+                    .bind(cursor)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+            (Some(q), None) => {
+                let pattern = format!("%{}%", q);
+                let sql = format!("{ACCOUNT_SELECT} WHERE (a.handle ILIKE $1 OR ac.email ILIKE $2) ORDER BY a.did ASC LIMIT $3");
+                sqlx::query(&sql)
+                    .bind(&pattern)
+                    .bind(&pattern)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+            (None, Some(cursor)) => {
+                let sql = format!("{ACCOUNT_SELECT} WHERE a.did > $1 ORDER BY a.did ASC LIMIT $2");
+                sqlx::query(&sql)
+                    .bind(cursor)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+            (None, None) => {
+                let sql = format!("{ACCOUNT_SELECT} ORDER BY a.did ASC LIMIT $1");
+                sqlx::query(&sql)
+                    .bind(limit as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                    .map_err(|e| PdsError::Storage(e.to_string()))?
+            }
+        };
+
+        rows.iter().map(row_to_actor_account).collect()
     }
 
-    async fn set_takedown(&self, _did: &str, _takedown_ref: Option<&str>) -> PdsResult<()> {
-        todo!("PostgreSQL support: set_takedown")
+    async fn set_takedown(&self, did: &str, takedown_ref: Option<&str>) -> PdsResult<()> {
+        sqlx::query("UPDATE actor SET takedown_ref = $1 WHERE did = $2")
+            .bind(takedown_ref)
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 
-    // Email token management (stubs for PostgreSQL)
-    async fn create_email_token(&self, _purpose: &str, _did: &str, _token: &str) -> PdsResult<()> {
-        todo!("PostgreSQL support: create_email_token")
+    // Email token management
+    async fn create_email_token(&self, purpose: &str, did: &str, token: &str) -> PdsResult<()> {
+        sqlx::query(
+            "INSERT INTO email_token (purpose, did, token) VALUES ($1, $2, $3) \
+             ON CONFLICT (purpose, did) DO UPDATE SET token = $3, requested_at = NOW()"
+        )
+            .bind(purpose)
+            .bind(did)
+            .bind(token)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 
-    async fn get_email_token(&self, _purpose: &str, _did: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
-        todo!("PostgreSQL support: get_email_token")
+    async fn get_email_token(&self, purpose: &str, did: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
+        let row = sqlx::query("SELECT token, requested_at FROM email_token WHERE purpose = $1 AND did = $2")
+            .bind(purpose)
+            .bind(did)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        match row {
+            Some(ref r) => {
+                let token: String = r
+                    .try_get("token")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                let requested_at: DateTime<Utc> = r
+                    .try_get("requested_at")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                Ok(Some((token, requested_at)))
+            }
+            None => Ok(None),
+        }
     }
 
-    async fn get_email_token_by_token(&self, _purpose: &str, _token: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
-        todo!("PostgreSQL support: get_email_token_by_token")
+    async fn get_email_token_by_token(&self, purpose: &str, token: &str) -> PdsResult<Option<(String, chrono::DateTime<chrono::Utc>)>> {
+        let row = sqlx::query("SELECT did, requested_at FROM email_token WHERE purpose = $1 AND token = $2")
+            .bind(purpose)
+            .bind(token)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+
+        match row {
+            Some(ref r) => {
+                let did: String = r
+                    .try_get("did")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                let requested_at: DateTime<Utc> = r
+                    .try_get("requested_at")
+                    .map_err(|e| PdsError::Storage(e.to_string()))?;
+                Ok(Some((did, requested_at)))
+            }
+            None => Ok(None),
+        }
     }
 
-    async fn delete_email_token(&self, _purpose: &str, _did: &str) -> PdsResult<()> {
-        todo!("PostgreSQL support: delete_email_token")
+    async fn delete_email_token(&self, purpose: &str, did: &str) -> PdsResult<()> {
+        sqlx::query("DELETE FROM email_token WHERE purpose = $1 AND did = $2")
+            .bind(purpose)
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 
-    async fn confirm_email(&self, _did: &str) -> PdsResult<()> {
-        todo!("PostgreSQL support: confirm_email")
+    async fn confirm_email(&self, did: &str) -> PdsResult<()> {
+        sqlx::query("UPDATE account SET email_confirmed_at = NOW() WHERE did = $1")
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 
-    async fn update_email(&self, _did: &str, _email: &str) -> PdsResult<()> {
-        todo!("PostgreSQL support: update_email")
+    async fn update_email(&self, did: &str, email: &str) -> PdsResult<()> {
+        sqlx::query("UPDATE account SET email = $1 WHERE did = $2")
+            .bind(email)
+            .bind(did)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| PdsError::Storage(e.to_string()))?;
+        Ok(())
     }
 }

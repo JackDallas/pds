@@ -1,15 +1,33 @@
+# Base config for Coolify deployment of dallaspds-multi.
+# All values can be overridden via environment variables in Coolify's UI
+# using the DALLAS_PDS_ prefix with __ as nested separator.
+#
+# Example env vars to set in Coolify:
+#   DALLAS_PDS_HOSTNAME=pds.manygames.at
+#   DALLAS_PDS_PUBLIC_URL=https://pds.manygames.at
+#   DALLAS_PDS_AVAILABLE_USER_DOMAINS=[".manygames.at"]
+#   DALLAS_PDS_DATABASE__URL=postgres://user:pass@host:5432/pds
+#   DALLAS_PDS_BLOBS__BUCKET=pds-blobs
+#   DALLAS_PDS_BLOBS__REGION=us-east-1
+#   DALLAS_PDS_BLOBS__ENDPOINT=https://s3.example.com
+#   DALLAS_PDS_ADMIN_DIDS=["did:plc:yourAdminDid"]
+#   DALLAS_PDS_INVITE_REQUIRED=true
+#
+# JWT secrets are auto-generated on first boot by docker-entrypoint.sh
+# and persisted to /app/data/.secrets.env (mount /app/data as a volume).
+
 hostname = "localhost"
 port = 3000
 public_url = "http://localhost:3000"
 plc_url = "https://plc.directory"
 available_user_domains = [".localhost"]
-invite_required = false
+invite_required = true
 mode = "Multi"
 admin_dids = []
 
 [jwt]
-access_secret = "CHANGE-ME-IN-COOLIFY"
-refresh_secret = "CHANGE-ME-IN-COOLIFY"
+access_secret = "placeholder-overridden-by-entrypoint"
+refresh_secret = "placeholder-overridden-by-entrypoint"
 
 [database]
 url = "postgres://pds:pds@localhost:5432/pds"
@@ -17,4 +35,3 @@ url = "postgres://pds:pds@localhost:5432/pds"
 [blobs]
 bucket = "pds-blobs"
 region = "us-east-1"
-endpoint = "http://minio:9000"

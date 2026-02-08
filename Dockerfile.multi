@@ -1,4 +1,15 @@
-# Stage 1: Build
+# Stage 0: Build admin UI
+FROM node:22-bookworm-slim AS ui-builder
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /build/admin-ui
+COPY admin-ui/package.json admin-ui/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY admin-ui/ .
+RUN pnpm run build
+
+# Stage 1: Build Rust binary
 FROM rust:1.88-bookworm AS builder
 
 WORKDIR /build
@@ -34,12 +45,18 @@ RUN mkdir -p crates/dallaspds-core/src && echo "" > crates/dallaspds-core/src/li
     mkdir -p crates/dallaspds-multi/src && echo "fn main() {}" > crates/dallaspds-multi/src/main.rs && \
     mkdir -p crates/dallaspds-test-utils/src && echo "" > crates/dallaspds-test-utils/src/lib.rs
 
+# Stub admin-ui build output so rust-embed can resolve the folder
+RUN mkdir -p admin-ui/build && touch admin-ui/build/.keep
+
 # Build dependencies only
 RUN cargo build --release -p dallaspds-multi 2>&1 || true
 
 # Remove stub source files and fingerprints so real source triggers rebuild
-RUN rm -rf crates/*/src && \
+RUN rm -rf crates/*/src admin-ui/build && \
     find target/release/.fingerprint -name "dallaspds-*" -exec rm -rf {} + 2>/dev/null || true
+
+# Copy admin UI build output from Stage 0
+COPY --from=ui-builder /build/admin-ui/build admin-ui/build
 
 # Copy real source code
 COPY crates/ crates/
@@ -59,8 +76,13 @@ WORKDIR /app
 # Copy binary
 COPY --from=builder /build/target/release/dallaspds-multi ./dallaspds-multi
 
-# Copy docker config
+# Copy docker config and entrypoint
 COPY config/docker-multi.toml ./config/docker-multi.toml
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
+# Create data directory for secrets persistence
+RUN mkdir -p /app/data
 
 ENV CONFIG_PATH=config/docker-multi.toml
 
@@ -69,4 +91,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD curl -f http://localhost:3000/xrpc/_health || exit 1
 
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["./dallaspds-multi"]
