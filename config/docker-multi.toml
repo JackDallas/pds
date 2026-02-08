@@ -1,0 +1,19 @@
+hostname = "localhost"
+port = 3000
+public_url = "http://localhost:3000"
+plc_url = "https://plc.directory"
+available_user_domains = [".localhost"]
+invite_required = false
+mode = "Multi"
+
+[jwt]
+access_secret = "CHANGE-ME-IN-COOLIFY"
+refresh_secret = "CHANGE-ME-IN-COOLIFY"
+
+[database]
+url = "postgres://pds:pds@localhost:5432/pds"
+
+[blobs]
+bucket = "pds-blobs"
+region = "us-east-1"
+endpoint = "http://minio:9000"

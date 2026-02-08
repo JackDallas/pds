@@ -36,6 +36,7 @@ pub fn create_test_config() -> PdsConfig {
             path: None,
             bucket: None,
             region: None,
+            endpoint: None,
         },
         mode: PdsMode::Single,
         appview_url: None,

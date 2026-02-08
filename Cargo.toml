@@ -97,6 +97,10 @@ hickory-resolver = "0.25"
 rustls-acme = { version = "0.15", features = ["axum"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 
+# AWS S3
+aws-sdk-s3 = "1"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+
 # Testing
 tempfile = "3"
 http-body-util = "0.1"

@@ -53,6 +53,8 @@ pub struct BlobsConfig {
     pub path: Option<String>,
     pub bucket: Option<String>,
     pub region: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
